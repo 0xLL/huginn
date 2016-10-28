@@ -42,12 +42,12 @@ module Agents
           "extract": {
             "url": { "css": "#comic img", "value": "@src" },
             "title": { "css": "#comic img", "value": "@title" },
-            "body_text": { "css": "div.main", "value": ".//text()" }
+            "body_text": { "css": "div.main", "value": "string(.)" }
           }
 
-      "@_attr_" is the XPath expression to extract the value of an attribute named _attr_ from a node, and `.//text()` extracts all the enclosed text. To extract the innerHTML, use `./node()`; and to extract the outer HTML, use  `.`.
+      "@_attr_" is the XPath expression to extract the value of an attribute named _attr_ from a node, and `string(.)` gives a string with all the enclosed text nodes concatenated without entity escaping (such as `&amp;`). To extract the innerHTML, use `./node()`; and to extract the outer HTML, use `.`.
 
-      You can also use [XPath functions](http://www.w3.org/TR/xpath/#section-String-Functions) like `normalize-space` to strip and squeeze whitespace, `substring-after` to extract part of a text, and `translate` to remove commas from formatted numbers, etc.  Note that these functions take a string, not a node set, so what you may think would be written as `normalize-space(.//text())` should actually be `normalize-space(.)`.
+      You can also use [XPath functions](http://www.w3.org/TR/xpath/#section-String-Functions) like `normalize-space` to strip and squeeze whitespace, `substring-after` to extract part of a text, and `translate` to remove commas from formatted numbers, etc.  Instead of passing `string(.)` to these functions, you can just pass `.` like `normalize-space(.)` and `translate(., ',', '')`.
 
       Beware that when parsing an XML document (i.e. `type` is `xml`) using `xpath` expressions, all namespaces are stripped from the document unless the top-level option `use_namespaces` is set to `true`.
 
@@ -94,7 +94,12 @@ module Agents
 
       Set `uniqueness_look_back` to limit the number of events checked for uniqueness (typically for performance).  This defaults to the larger of #{UNIQUENESS_LOOK_BACK} or #{UNIQUENESS_FACTOR}x the number of detected received results.
 
-      Set `force_encoding` to an encoding name if the website is known to respond with a missing, invalid, or wrong charset in the Content-Type header.  Note that a text content without a charset is taken as encoded in UTF-8 (not ISO-8859-1).
+      Set `force_encoding` to an encoding name (such as `UTF-8` and `ISO-8859-1`) if the website is known to respond with a missing, invalid, or wrong charset in the Content-Type header.  Below are the steps to detect the encoding of a fetched content:
+
+      1. If `force_encoding` is given, use the value.
+      2. If the Content-Type header contains a charset parameter, use the value.
+      3. When `type` is `html` or `xml`, check for the presence of a BOM, XML declaration with attribute "encoding", and an HTML meta tag with charset information.
+      4. Fall back to UTF-8 (not ISO-8859-1).
 
       Set `user_agent` to a custom User-Agent name if the website does not like the default value (`#{default_user_agent}`).
 
@@ -305,6 +310,16 @@ module Agents
       }
     rescue => e
       error "Error when fetching url: #{e.message}\n#{e.backtrace.join("\n")}"
+    end
+
+    def default_encoding
+      case extraction_type
+      when 'html', 'xml'
+        # Let Nokogiri detect the encoding
+        nil
+      else
+        super
+      end
     end
 
     def handle_data(body, url, existing_payload)
